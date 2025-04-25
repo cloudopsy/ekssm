@@ -1,3 +1,5 @@
+// Package util provides internal utility functions for file operations, networking,
+// and kubeconfig management specific to ekssm.
 package util
 
 import (
@@ -9,7 +11,8 @@ import (
 )
 
 // CopyFile copies a file from src path to dst path.
-// It preserves permissions of the source file.
+// It preserves permissions of the source file. If the source file doesn't
+// exist, it returns nil (not an error).
 func CopyFile(src, dst string) error {
 	sourceFileStat, err := os.Stat(src)
 	if err != nil {

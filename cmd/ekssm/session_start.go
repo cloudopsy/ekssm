@@ -1,11 +1,10 @@
+// Package main implements the command-line interface for ekssm.
 package main
 
 import (
 	"context"
 	"fmt"
 	"os"
-	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -16,27 +15,29 @@ import (
 	"github.com/cloudopsy/ekssm/internal/logging"
 	"github.com/cloudopsy/ekssm/internal/state"
 	"github.com/cloudopsy/ekssm/internal/util"
-	awsclient "github.com/cloudopsy/ekssm/pkg/aws"
 	"github.com/cloudopsy/ekssm/pkg/kubectl"
 	"github.com/cloudopsy/ekssm/pkg/proxy"
 )
 
+// startOptions contains all the command line options for the session start command
 var startOpts struct {
 	ClusterName string
 	InstanceID  string
-	LocalPort   string // Now optional, leave empty or "0" for dynamic
+	LocalPort   string // Optional, leave empty or "0" for dynamic port allocation
 }
 
+// sessionStartCmd represents the session start command
 var sessionStartCmd = &cobra.Command{
 	Use:   "start",
 	Short: "Start a background SSM proxy session for EKS access",
 	Long: `Starts an SSM port forwarding session in the background to the specified EKS cluster endpoint via an EC2 instance.
 It automatically finds an available local port unless one is specified with --local-port.
 It generates a dedicated kubeconfig file for this session and saves the session details.
-Multiple sessions can be started concurrently.`, // Updated help
-	RunE:  startSession,
+Multiple sessions can be started concurrently.`,
+	RunE: startSession,
 }
 
+// startSession handles starting a background SSM proxy session
 func startSession(cmd *cobra.Command, args []string) error {
 	debug, _ := cmd.Flags().GetBool("debug")
 	logging.SetDebug(debug)
@@ -52,30 +53,19 @@ func startSession(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to initialize state manager: %w", err)
 	}
 
-	ctx := context.Background()
-	awsClient, err := awsclient.NewClient(ctx)
+	// Create a context that can be canceled on signal
+	ctx, cancelCtx := context.WithCancel(context.Background())
+	defer cancelCtx()
+
+	// Get the EKS cluster endpoint
+	eksHost, err := util.EKSClusterEndpoint(ctx, startOpts.ClusterName)
 	if err != nil {
-		return fmt.Errorf("failed to initialize AWS client: %w", err)
+		return err
 	}
-
-	clusterOutput, err := awsClient.DescribeEKSCluster(ctx, startOpts.ClusterName)
-	if err != nil {
-		return fmt.Errorf("failed to describe EKS cluster: %w", err)
-	}
-	if clusterOutput.Cluster == nil || clusterOutput.Cluster.Endpoint == nil || *clusterOutput.Cluster.Endpoint == "" {
-		return fmt.Errorf("invalid cluster information returned from EKS API")
-	}
-
-	eksEndpoint := *clusterOutput.Cluster.Endpoint
-	logging.Debugf("EKS API server endpoint: %s", eksEndpoint)
-
-	// Extract host from https://... endpoint
-	eksHost := strings.TrimPrefix(eksEndpoint, "https://")
-	logging.Debugf("Using remote host: %s for port forwarding", eksHost)
 
 	// Determine local port
 	localPort := startOpts.LocalPort
-	if localPort == "" || localPort == "0" { // If not specified or explicitly set to 0, find one
+	if localPort == "" || localPort == "0" {
 		logging.Debug("No local port specified or set to 0, finding an available port...")
 		foundPort, err := util.FindAvailablePort()
 		if err != nil {
@@ -85,8 +75,6 @@ func startSession(cmd *cobra.Command, args []string) error {
 		logging.Infof("Using dynamically allocated local port: %s", localPort)
 	} else {
 		logging.Infof("Using user-specified local port: %s", localPort)
-		// TODO: Optional: Add a check here to see if the user-specified port is actually free?
-		// For now, we assume the user knows what they are doing if they specify a port.
 	}
 
 	ssmProxy := proxy.NewSSMProxy(startOpts.InstanceID, localPort, eksHost, constants.EKSApiPort)
@@ -124,7 +112,7 @@ func startSession(cmd *cobra.Command, args []string) error {
 		SessionID:      sessionID,
 		ClusterName:    startOpts.ClusterName,
 		InstanceID:     startOpts.InstanceID,
-		LocalPort:      localPort, // Store the actual port used
+		LocalPort:      localPort,
 		KubeconfigPath: kubeconfigPath,
 	}
 
@@ -144,55 +132,58 @@ func startSession(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to save session state after starting proxy: %w", err)
 	}
 
-	fmt.Println("Successfully started ekssm session in background.")
-	fmt.Printf("  PID: %d\n", pid)
-	fmt.Printf("  SessionID: %s\n", sessionID)
-	fmt.Printf("  Cluster: %s\n", startOpts.ClusterName)
-	fmt.Printf("  Proxy: localhost:%s -> %s:%s (via %s)\n", localPort, eksHost, constants.EKSApiPort, startOpts.InstanceID)
-	fmt.Printf("  Session Kubeconfig: %s\n\n", kubeconfigPath)
-	fmt.Println("To use this session, export the KUBECONFIG environment variable:")
-	fmt.Printf("  export KUBECONFIG='%s'\n\n", kubeconfigPath)
-	fmt.Println("Use 'ekssm session list' to see all sessions.")
-	fmt.Println("Use 'ekssm session switch <id>' to get the export command for a session.")
-	fmt.Println("Run 'ekssm session stop --session-id <id>' or 'ekssm session stop' to terminate sessions.")
+	// Print success information
+	printSessionInfo(pid, sessionID, startOpts.ClusterName, localPort, eksHost, startOpts.InstanceID, kubeconfigPath)
 
-	// Optional: Wait a short moment to let the proxy establish fully
-	time.Sleep(1 * time.Second)
-
-	// Set up signal handling to attempt cleanup on interrupt (Ctrl+C)
-	signalCh := make(chan os.Signal, 1)
-	signal.Notify(signalCh, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		sig := <-signalCh
-		logging.Warnf("Received signal: %v. Attempting cleanup...", sig)
-		// Note: This cleanup might not be perfect, session stop is more reliable
+	// Set up signal handling for cleaner shutdown
+	cleanup := func() {
+		logging.Warnf("Attempting cleanup for session %s...", sessionID)
 		if stopErr := ssmProxy.Stop(); stopErr != nil {
 			logging.Warnf("Error stopping proxy during signal cleanup: %v", stopErr)
 		}
 		if removeErr := os.Remove(kubeconfigPath); removeErr != nil && !os.IsNotExist(removeErr) {
 			logging.Warnf("Error removing kubeconfig during signal cleanup: %v", removeErr)
 		}
-		os.Exit(1)
-	}()
+		_ = stateManager.RemoveSession(sessionID)
+	}
 
+	// Optional: Wait a short moment to let the proxy establish fully
+	time.Sleep(1 * time.Second)
+	
+	// Setup custom signal handling for this long-running command
+	util.HandleSignalCustom(cleanup)
+	
 	return nil
+}
+
+// printSessionInfo prints information about the started session
+func printSessionInfo(pid int, sessionID, clusterName, localPort, eksHost, instanceID, kubeconfigPath string) {
+	fmt.Println("Successfully started ekssm session in background.")
+	fmt.Printf("  PID: %d\n", pid)
+	fmt.Printf("  SessionID: %s\n", sessionID)
+	fmt.Printf("  Cluster: %s\n", clusterName)
+	fmt.Printf("  Proxy: localhost:%s -> %s:%s (via %s)\n", localPort, eksHost, constants.EKSApiPort, instanceID)
+	fmt.Printf("  Session Kubeconfig: %s\n\n", kubeconfigPath)
+	fmt.Println("To use this session, export the KUBECONFIG environment variable:")
+	fmt.Printf("  export KUBECONFIG='%s'\n\n", kubeconfigPath)
+	fmt.Println("Use 'ekssm session list' to see all sessions.")
+	fmt.Println("Use 'ekssm session switch <id>' to get the export command for a session.")
+	fmt.Println("Run 'ekssm session stop --session-id <id>' or 'ekssm session stop' to terminate sessions.")
 }
 
 func init() {
 	sessionCmd.AddCommand(sessionStartCmd)
 
+	// Add command flags
 	sessionStartCmd.Flags().StringVar(&startOpts.ClusterName, "cluster-name", "", "Name of the EKS cluster (required)")
 	sessionStartCmd.Flags().StringVar(&startOpts.InstanceID, "instance-id", "", "EC2 instance ID of the bastion host (required)")
-	// Make local-port optional, default is empty string which triggers dynamic allocation
 	sessionStartCmd.Flags().StringVar(&startOpts.LocalPort, "local-port", "", "Local port for forwarding EKS API access (default: dynamically allocated)")
 
 	// Mark required flags
-	if err := sessionStartCmd.MarkFlagRequired("cluster-name"); err != nil {
-		fmt.Fprintf(os.Stderr, "Error marking cluster-name flag required: %v\n", err)
-		os.Exit(1)
-	}
-	if err := sessionStartCmd.MarkFlagRequired("instance-id"); err != nil {
-		fmt.Fprintf(os.Stderr, "Error marking instance-id flag required: %v\n", err)
-		os.Exit(1)
+	for _, flag := range []string{"cluster-name", "instance-id"} {
+		if err := sessionStartCmd.MarkFlagRequired(flag); err != nil {
+			fmt.Fprintf(os.Stderr, "Error marking %s flag required: %v\n", flag, err)
+			os.Exit(1)
+		}
 	}
 }

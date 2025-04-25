@@ -1,3 +1,5 @@
+// Package state provides functionality for managing and persisting session state
+// in the ekssm application.
 package state
 
 import (
@@ -20,14 +22,14 @@ type SessionState struct {
 	KubeconfigPath string `json:"kubeconfig_path"`
 }
 
+// SessionMap defines the structure stored in the JSON file (map of SessionID to SessionState).
+type SessionMap map[string]SessionState
+
 // Manager handles loading and saving the session state.
 type Manager struct {
 	stateFilePath string
 	mu            sync.Mutex // Protects access to the state file
 }
-
-// SessionMap defines the structure stored in the JSON file (map of SessionID to SessionState).
-type SessionMap map[string]SessionState
 
 // NewManager creates a new state manager.
 func NewManager() (*Manager, error) {
@@ -44,7 +46,6 @@ func NewManager() (*Manager, error) {
 }
 
 // loadState reads the session state map from the file.
-// It acquires the lock.
 func (m *Manager) loadState() (SessionMap, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -52,14 +53,12 @@ func (m *Manager) loadState() (SessionMap, error) {
 	data, err := os.ReadFile(m.stateFilePath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			// If the file doesn't exist, return an empty map
 			return make(SessionMap), nil
 		}
 		return nil, fmt.Errorf("failed to read state file %s: %w", m.stateFilePath, err)
 	}
 
 	if len(data) == 0 {
-		// If the file is empty, return an empty map
 		return make(SessionMap), nil
 	}
 
@@ -71,7 +70,6 @@ func (m *Manager) loadState() (SessionMap, error) {
 }
 
 // saveState writes the session state map to the file.
-// It acquires the lock.
 func (m *Manager) saveState(sessions SessionMap) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -112,7 +110,7 @@ func (m *Manager) RemoveSession(sessionID string) error {
 	}
 	if _, exists := sessions[sessionID]; !exists {
 		logging.Warnf("Attempted to remove non-existent session ID: %s", sessionID)
-		return nil // Or return an error if preferred
+		return nil
 	}
 	delete(sessions, sessionID)
 	return m.saveState(sessions)
@@ -130,7 +128,7 @@ func (m *Manager) GetSession(sessionID string) (*SessionState, error) {
 	if session, exists := sessions[sessionID]; exists {
 		return &session, nil
 	}
-	return nil, fmt.Errorf("session with ID '%s' not found", sessionID) // Return specific error when not found
+	return nil, fmt.Errorf("session with ID '%s' not found", sessionID)
 }
 
 // GetAllSessions retrieves all active sessions.
@@ -140,6 +138,5 @@ func (m *Manager) GetAllSessions() (SessionMap, error) {
 
 // ClearAllSessions removes all sessions from the state file.
 func (m *Manager) ClearAllSessions() error {
-	// Save an empty map to clear the file
 	return m.saveState(make(SessionMap))
 }

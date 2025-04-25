@@ -1,3 +1,5 @@
+// Package aws provides client utilities for interacting with AWS services
+// such as EKS and SSM.
 package aws
 
 import (
@@ -12,12 +14,14 @@ import (
 	"github.com/cloudopsy/ekssm/internal/logging"
 )
 
+// Client holds AWS service clients and region information.
 type Client struct {
    EKS    *eks.Client
    SSM    *ssm.Client
    Region string
 }
 
+// NewClient creates a new AWS client with EKS and SSM service clients.
 func NewClient(ctx context.Context) (*Client, error) {
 	logging.Debug("Initializing AWS client")
 	
@@ -33,6 +37,7 @@ func NewClient(ctx context.Context) (*Client, error) {
    }, nil
 }
 
+// DescribeEKSCluster retrieves information about the specified EKS cluster.
 func (c *Client) DescribeEKSCluster(ctx context.Context, clusterName string) (*eks.DescribeClusterOutput, error) {
 	if clusterName == "" {
 		return nil, fmt.Errorf("cluster name is required")

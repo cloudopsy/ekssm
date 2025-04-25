@@ -1,3 +1,5 @@
+// Package util provides internal utility functions for file operations, networking,
+// and kubeconfig management specific to ekssm.
 package util
 
 import (
@@ -9,6 +11,8 @@ import (
 	"github.com/cloudopsy/ekssm/internal/logging"
 )
 
+// WaitForPort waits for a TCP port to be available (connectable) within the given timeout.
+// Returns an error if the port doesn't become available within the timeout.
 func WaitForPort(port string, timeout time.Duration) error {
 	address := fmt.Sprintf("localhost:%s", port)
 	deadline := time.Now().Add(timeout)
@@ -36,26 +40,16 @@ func WaitForPort(port string, timeout time.Duration) error {
 // FindAvailablePort finds an available local TCP port by listening on port 0.
 // It returns the port number as a string.
 func FindAvailablePort() (string, error) {
-	// Listen on TCP port 0, which tells the OS to pick an available ephemeral port.
-	// We listen on the loopback address only.
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return "", fmt.Errorf("failed to listen on port 0: %w", err)
 	}
 
-	// Get the address (including the chosen port) that the listener is bound to.
 	addr := listener.Addr().(*net.TCPAddr)
-
-	// IMPORTANT: Close the listener immediately. We only needed it to find the port,
-	// the actual service (SSM proxy) will bind to this port later.
 	closeErr := listener.Close()
 	if closeErr != nil {
-		// Log this error, but finding the port was successful, so we might still proceed
-		// Or return the error if closing is critical? Let's return it for safety.
 		return "", fmt.Errorf("found port %d but failed to close listener: %w", addr.Port, closeErr)
 	}
 
-	port := addr.Port
-	// Return the port number as a string
-	return strconv.Itoa(port), nil
+	return strconv.Itoa(addr.Port), nil
 }

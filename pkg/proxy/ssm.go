@@ -1,3 +1,5 @@
+// Package proxy provides functionality for establishing secure connections
+// to remote services through SSM port forwarding.
 package proxy
 
 import (
@@ -18,6 +20,7 @@ import (
 	awsclient "github.com/cloudopsy/ekssm/pkg/aws"
 )
 
+// SSMProxy manages an SSM port forwarding session.
 type SSMProxy struct {
 	InstanceID string
 	LocalPort  string
@@ -29,6 +32,7 @@ type SSMProxy struct {
 	client     *awsclient.Client
 }
 
+// NewSSMProxy creates a new SSM proxy configured with the specified parameters.
 func NewSSMProxy(instanceID, localPort, remoteHost, remotePort string) *SSMProxy {
 	if remotePort == "" {
 		remotePort = "443"
@@ -42,6 +46,7 @@ func NewSSMProxy(instanceID, localPort, remoteHost, remotePort string) *SSMProxy
 	}
 }
 
+// StartBackground starts the SSM proxy process in the background and returns its PID.
 func (p *SSMProxy) StartBackground() (int, error) {
 	if p.InstanceID == "" {
 		return -1, fmt.Errorf("instanceID is required")
@@ -126,6 +131,7 @@ func (p *SSMProxy) StartBackground() (int, error) {
 	return p.cmd.Process.Pid, nil
 }
 
+// Stop terminates the SSM proxy session and cleans up resources.
 func (p *SSMProxy) Stop() error {
 	var firstErr error
 

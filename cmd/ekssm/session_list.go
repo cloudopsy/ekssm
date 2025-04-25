@@ -1,3 +1,4 @@
+// Package main implements the command-line interface for ekssm.
 package main
 
 import (
@@ -12,6 +13,7 @@ import (
 	"github.com/cloudopsy/ekssm/internal/state"
 )
 
+// sessionListCmd represents the session list command
 var sessionListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all active ekssm sessions",
@@ -19,6 +21,7 @@ var sessionListCmd = &cobra.Command{
 	RunE:  listSessions,
 }
 
+// listSessions retrieves and displays all active sessions
 func listSessions(cmd *cobra.Command, args []string) error {
 	debug, _ := cmd.Flags().GetBool("debug")
 	logging.SetDebug(debug)
@@ -30,7 +33,7 @@ func listSessions(cmd *cobra.Command, args []string) error {
 
 	allSessions, err := stateManager.GetAllSessions()
 	if err != nil {
-		// Check if the error is because the file doesn't exist (no sessions ever started)
+		// Check if the error is because the file doesn't exist
 		if os.IsNotExist(err) {
 			fmt.Println("No active ekssm sessions found.")
 			return nil
@@ -43,16 +46,25 @@ func listSessions(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Prepare data for table
+	renderSessionTable(allSessions)
+	return nil
+}
+
+// renderSessionTable formats and displays session data in a table
+func renderSessionTable(sessions state.SessionMap) {
+	// Prepare session data for display
 	data := [][]string{}
-	ids := make([]string, 0, len(allSessions)) // For sorting
-	for id := range allSessions {
+	
+	// Sort session IDs for consistent output
+	ids := make([]string, 0, len(sessions))
+	for id := range sessions {
 		ids = append(ids, id)
 	}
-	sort.Strings(ids) // Sort by session ID for consistent output
+	sort.Strings(ids)
 
+	// Build table rows
 	for _, id := range ids {
-		session := allSessions[id]
+		session := sessions[id]
 		data = append(data, []string{
 			session.SessionID,
 			session.ClusterName,
@@ -65,11 +77,7 @@ func listSessions(cmd *cobra.Command, args []string) error {
 	// Render table
 	table := tablewriter.NewWriter(os.Stdout)
 	table.SetHeader([]string{"Session ID", "Cluster", "PID", "Local Port", "Kubeconfig Path"})
-	table.SetBorder(true)       // Set border to true
-	table.AppendBulk(data)      // Add Bulk Data
+	table.SetBorder(true)
+	table.AppendBulk(data)
 	table.Render()
-
-	return nil
 }
-
-// No init() needed here as the command is added in session.go

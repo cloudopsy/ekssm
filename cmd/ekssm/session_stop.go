@@ -1,3 +1,4 @@
+// Package main implements the command-line interface for ekssm.
 package main
 
 import (
@@ -12,8 +13,14 @@ import (
 	"github.com/cloudopsy/ekssm/internal/state"
 )
 
-var stopSessionID string // Flag variable
+// sessionStopOptions contains command line options for session stop
+type sessionStopOptions struct {
+	SessionID string
+}
 
+var stopOpts sessionStopOptions
+
+// sessionStopCmd represents the session stop command
 var sessionStopCmd = &cobra.Command{
 	Use:   "stop [--session-id <id>]",
 	Short: "Stop background SSM proxy session(s)",
@@ -25,27 +32,25 @@ If no --session-id is provided, all active sessions are stopped.`,
 	RunE: stopSession,
 }
 
-func init() {
-	sessionCmd.AddCommand(sessionStopCmd)
-	// Add the optional session-id flag
-	sessionStopCmd.Flags().StringVar(&stopSessionID, "session-id", "", "Optional ID of the specific session to stop.")
-}
-
+// stopSession handles stopping one or all sessions
 func stopSession(cmd *cobra.Command, args []string) error {
+	debug, _ := cmd.Flags().GetBool("debug")
+	logging.SetDebug(debug)
+	
 	stateManager, err := state.NewManager()
 	if err != nil {
 		return fmt.Errorf("failed to initialize state manager: %w", err)
 	}
 
-	if stopSessionID != "" {
+	if stopOpts.SessionID != "" {
 		// Stop a specific session
-		logging.Infof("Attempting to stop session with ID: %s", stopSessionID)
-		session, err := stateManager.GetSession(stopSessionID)
+		logging.Infof("Attempting to stop session with ID: %s", stopOpts.SessionID)
+		session, err := stateManager.GetSession(stopOpts.SessionID)
 		if err != nil {
-			logging.Errorf("Failed to find session with ID '%s': %v", stopSessionID, err)
+			logging.Errorf("Failed to find session with ID '%s': %v", stopOpts.SessionID, err)
 			return err // Return the error indicating session not found
 		}
-		return stopAndCleanupSession(stateManager, *session)
+		return stopAndCleanupSession(stateManager, *session, true)
 	}
 
 	// Stop all sessions
@@ -69,7 +74,7 @@ func stopSession(cmd *cobra.Command, args []string) error {
 
 	for id, session := range allSessions {
 		logging.Infof("Stopping session %s (PID: %d)...", id, session.PID)
-		err := stopAndCleanupSession(stateManager, session)
+		err := stopAndCleanupSession(stateManager, session, false)
 		if err != nil {
 			logging.Errorf("Failed to fully stop session %s: %v", id, err)
 			if firstErr == nil {
@@ -98,7 +103,8 @@ func stopSession(cmd *cobra.Command, args []string) error {
 }
 
 // stopAndCleanupSession handles the termination and cleanup for a single session.
-func stopAndCleanupSession(manager *state.Manager, session state.SessionState) error {
+// The removeFromState parameter controls whether to explicitly remove the session from state.
+func stopAndCleanupSession(manager *state.Manager, session state.SessionState, removeFromState bool) error {
 	var combinedErr error
 
 	// --- Terminate Process ---
@@ -125,7 +131,6 @@ func stopAndCleanupSession(manager *state.Manager, session state.SessionState) e
 		} else {
 			logging.Debugf("Sent SIGTERM successfully to PID %d. Waiting briefly...", session.PID)
 			// Optionally wait a bit to see if it terminates gracefully
-			// This part could be more sophisticated by checking if the process actually exited
 			time.Sleep(1 * time.Second)
 		}
 	}
@@ -150,9 +155,7 @@ func stopAndCleanupSession(manager *state.Manager, session state.SessionState) e
 	}
 
 	// --- Remove Session from State ---
-	// This happens implicitly if stopping all sessions via ClearAllSessions.
-	// If stopping a single session, we remove it explicitly.
-	if stopSessionID != "" { // Only remove explicitly if stopping a single ID
+	if removeFromState {
 		logging.Debugf("Removing session %s from state file.", session.SessionID)
 		if err := manager.RemoveSession(session.SessionID); err != nil {
 			logging.Errorf("Failed to remove session %s from state: %v", session.SessionID, err)
@@ -167,4 +170,11 @@ func stopAndCleanupSession(manager *state.Manager, session state.SessionState) e
 	}
 
 	return combinedErr
+}
+
+func init() {
+	sessionCmd.AddCommand(sessionStopCmd)
+	
+	// Add the optional session-id flag
+	sessionStopCmd.Flags().StringVar(&stopOpts.SessionID, "session-id", "", "Optional ID of the specific session to stop.")
 }
