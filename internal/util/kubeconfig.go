@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	
+
 	"github.com/cloudopsy/ekssm/internal/logging"
 )
 
@@ -15,7 +15,7 @@ func GetKubeconfigPath() string {
 func BackupKubeconfig(kubeconfigPath string) (string, error) {
 	backupPath := kubeconfigPath + ".bak"
 	logging.Debugf("Backing up kubeconfig from %s to %s", kubeconfigPath, backupPath)
-	
+
 	if _, err := os.Stat(kubeconfigPath); err == nil {
 		if err := os.Rename(kubeconfigPath, backupPath); err != nil {
 			return "", fmt.Errorf("failed to backup kubeconfig: %w", err)
@@ -33,7 +33,7 @@ func RestoreKubeconfig(kubeconfigPath, backupPath string) error {
 		if err := os.Rename(backupPath, kubeconfigPath); err != nil {
 			return fmt.Errorf("failed to restore kubeconfig by renaming backup %s: %w", backupPath, err)
 		}
-		logging.Infof("Successfully restored kubeconfig from backup %s", backupPath)
+		logging.Debugf("Successfully restored kubeconfig from backup %s", backupPath)
 	} else {
 		if os.IsNotExist(backupStatErr) {
 			if removeErr := os.Remove(kubeconfigPath); removeErr != nil && !os.IsNotExist(removeErr) {
