@@ -21,7 +21,7 @@ import (
 type runOptions struct {
 	ClusterName string
 	InstanceID  string
-	LocalPort   string
+	LocalPort   string // Now optional, leave empty or "0" for dynamic
 }
 
 var runOpts runOptions
@@ -71,7 +71,21 @@ Example: ekssm run --cluster-name my-cluster --instance-id i-12345 -- kubectl ge
 		eksHost := strings.TrimPrefix(eksEndpoint, "https://")
 		logging.Debugf("Using remote host: %s for port forwarding", eksHost)
 
-		ssmProxy := proxy.NewSSMProxy(runOpts.InstanceID, runOpts.LocalPort, eksHost, constants.EKSApiPort)
+		// Determine local port - use dynamic allocation if not specified
+		localPort := runOpts.LocalPort
+		if localPort == "" || localPort == "0" {
+			logging.Debug("No local port specified or set to 0, finding an available port...")
+			foundPort, err := util.FindAvailablePort()
+			if err != nil {
+				return fmt.Errorf("failed to find an available local port: %w", err)
+			}
+			localPort = foundPort
+			logging.Infof("Using dynamically allocated local port: %s", localPort)
+		} else {
+			logging.Infof("Using user-specified local port: %s", localPort)
+		}
+
+		ssmProxy := proxy.NewSSMProxy(runOpts.InstanceID, localPort, eksHost, constants.EKSApiPort)
 
 		// Channel for proxy errors and signals
 		signalCh := make(chan os.Signal, 1)
@@ -109,8 +123,8 @@ Example: ekssm run --cluster-name my-cluster --instance-id i-12345 -- kubectl ge
 			}
 		}()
 
-		// Generate kubeconfig content
-		endpoint := fmt.Sprintf("https://localhost:%s", runOpts.LocalPort)
+		// Generate kubeconfig content with the actual port used
+		endpoint := fmt.Sprintf("https://localhost:%s", localPort)
 		kubeconfigContent := kubectl.GenerateKubeconfig(runOpts.ClusterName, endpoint)
 
 		// Write the temporary kubeconfig
@@ -150,7 +164,7 @@ func init() {
 
 	runCmd.Flags().StringVar(&runOpts.ClusterName, "cluster-name", "", "Name of the EKS cluster (required)")
 	runCmd.Flags().StringVar(&runOpts.InstanceID, "instance-id", "", "EC2 instance ID of the bastion host (required)")
-	runCmd.Flags().StringVar(&runOpts.LocalPort, "local-port", constants.DefaultLocalPort, "Local port for forwarding EKS API access")
+	runCmd.Flags().StringVar(&runOpts.LocalPort, "local-port", "", "Local port for forwarding EKS API access (default: dynamically allocated)")
 
 	// Mark required flags
 	if err := runCmd.MarkFlagRequired("cluster-name"); err != nil {
