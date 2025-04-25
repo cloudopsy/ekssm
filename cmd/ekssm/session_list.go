@@ -80,4 +80,12 @@ func renderSessionTable(sessions state.SessionMap) {
 	table.SetBorder(true)
 	table.AppendBulk(data)
 	table.Render()
+	
+	// If sessions exist, print the latest one for easy access
+	if len(ids) > 0 {
+		// Get the most recently added session (we'll use the last ID in the sorted list)
+		latestSessionID := ids[len(ids)-1]
+		fmt.Printf("\nLatest session created: %s\n", latestSessionID)
+		fmt.Printf("Use 'ekssm session switch %s' to use this session\n", latestSessionID)
+	}
 }

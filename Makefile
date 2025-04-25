@@ -6,6 +6,7 @@ BUILD_DIR=bin
 
 # Go parameters
 GOCMD=go
+GOPATH=$(shell go env GOPATH)
 GOBUILD=$(GOCMD) build
 GOCLEAN=$(GOCMD) clean
 GOTEST=$(GOCMD) test

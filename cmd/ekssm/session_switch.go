@@ -19,7 +19,12 @@ required to set the KUBECONFIG environment variable to that session's dedicated 
 
 You need to run the output command in your shell to actually switch the context.
 Example: $(ekssm session switch <some-session-id>)
-Or copy-paste the output.`,
+Or copy-paste the output.
+
+TIP: For automatic KUBECONFIG setting without manual export, add shell integration:
+  eval "$(ekssm shell bash)"  # Add to ~/.bashrc or ~/.zshrc
+
+With shell integration enabled, just run 'ekssm session switch <id>' directly.`,
 	Args:  cobra.ExactArgs(1), // Requires exactly one argument: the session_id
 	RunE:  switchSession,
 }

@@ -34,6 +34,9 @@ func Execute() {
 }
 
 func init() {
+	// Register all commands
+	rootCmd.AddCommand(shellCmd)
+	
 	// Add the debug flag to all commands
 	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "Enable debug logging")
 }

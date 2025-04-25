@@ -16,7 +16,10 @@ Available subcommands:
   start       - Start a new background session
   stop        - Stop one or all sessions
   list        - List all active sessions
-  switch      - Get command to switch to a specific session`,
+  switch      - Get command to switch to a specific session
+
+TIP: For automatic KUBECONFIG setting without manual export, use shell integration:
+  eval "$(ekssm shell bash)"  # Add to ~/.bashrc or ~/.zshrc`,
 }
 
 func init() {

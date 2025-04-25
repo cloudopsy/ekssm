@@ -16,6 +16,7 @@ EKSSM is a robust CLI tool that allows you to run Kubernetes CLI commands (like 
   - `session stop`: Stop a specific session by ID or all sessions.
   - `session list`: View details of all active sessions.
   - `session switch`: Get the command to point `KUBECONFIG` to a specific session's file.
+- **Shell Integration:** Optional shell hooks to automatically set environment variables in your current shell.
 - Support for all standard Kubernetes CLI commands (kubectl, helm, etc.)
 - Proper signal handling and cleanup
 - Detailed logging with `--debug` option
@@ -103,8 +104,11 @@ ekssm session switch <SESSION_ID>
 # Example: Use the output in your shell
 export KUBECONFIG=$(ekssm session switch <SESSION_ID>)
 # or copy-paste the output: export KUBECONFIG='/path/to/session.yaml'
+
+# If you've set up shell integration (see Shell Integration section below), you can use:
+ekssm session switch <SESSION_ID>  # This will set KUBECONFIG automatically
 ```
-This command prints the `export KUBECONFIG=...` command pointing to the specified session's kubeconfig file. **It does not execute the command itself.**
+This command prints the `export KUBECONFIG=...` command pointing to the specified session's kubeconfig file. **It does not execute the command itself** unless you've set up shell integration.
 
 **Stopping Sessions:**
 
@@ -128,6 +132,34 @@ This command:
 - `--local-port` (Optional for `run`, `session start`): Specific local port for the proxy. If omitted or "0", a dynamic port is allocated.
 - `--session-id` (Optional for `session stop`): Specific session ID to stop. If omitted, all sessions are stopped.
 - `--debug` (Optional, Global): Enable verbose debug logging.
+
+## Shell Integration
+
+EKSSM can be integrated with your shell to automatically set environment variables (like `KUBECONFIG`) in your current shell session. This allows commands like `ekssm session switch` to directly modify your shell environment without requiring you to manually export the variables.
+
+To set up shell integration:
+
+1. Add the following line to your shell configuration file (`.bashrc`, `.zshrc`, etc.):
+
+```bash
+# For bash or zsh
+eval "$(ekssm shell bash)"  # or replace bash with zsh
+```
+
+2. Restart your shell or source the configuration file:
+
+```bash
+source ~/.bashrc  # or .zshrc, etc.
+```
+
+3. Now you can directly use the commands without manual exports:
+
+```bash
+# This will automatically set KUBECONFIG in your current shell
+ekssm session switch <SESSION_ID>
+```
+
+The shell integration works by overriding the `ekssm` command with a shell function that intercepts certain commands and applies their output to the current shell environment.
 
 ## Requirements
 

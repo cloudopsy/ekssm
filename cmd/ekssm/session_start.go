@@ -169,6 +169,9 @@ func printSessionInfo(pid int, sessionID, clusterName, localPort, eksHost, insta
 	fmt.Println("Use 'ekssm session list' to see all sessions.")
 	fmt.Println("Use 'ekssm session switch <id>' to get the export command for a session.")
 	fmt.Println("Run 'ekssm session stop --session-id <id>' or 'ekssm session stop' to terminate sessions.")
+	fmt.Println()
+	fmt.Println("TIP: For automatic KUBECONFIG environment variable setting, add shell integration:")
+	fmt.Println("  For bash/zsh:  eval \"$(ekssm shell bash)\"  # Add to ~/.bashrc or ~/.zshrc")
 }
 
 func init() {
