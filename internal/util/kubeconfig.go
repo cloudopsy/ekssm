@@ -12,42 +12,26 @@ func GetKubeconfigPath() string {
 	return filepath.Join(os.Getenv("HOME"), ".kube", "config")
 }
 
-func BackupKubeconfig(kubeconfigPath string) (string, error) {
-	backupPath := kubeconfigPath + ".bak"
-	logging.Debugf("Backing up kubeconfig from %s to %s", kubeconfigPath, backupPath)
-
-	if _, err := os.Stat(kubeconfigPath); err == nil {
-		if err := os.Rename(kubeconfigPath, backupPath); err != nil {
-			return "", fmt.Errorf("failed to backup kubeconfig: %w", err)
-		}
-	}
-	return backupPath, nil
+func KubeconfigBasePath() string {
+	return filepath.Join(os.Getenv("HOME"), ".ekssm", "kubeconfigs")
 }
 
-func RestoreKubeconfig(kubeconfigPath, backupPath string) error {
-	logging.Debugf("Attempting to restore kubeconfig state: target=%s, backup=%s", kubeconfigPath, backupPath)
+func KubeconfigPathForSession(clusterName, sessionID string) string {
+	clusterDir := filepath.Join(KubeconfigBasePath(), clusterName)
+	return filepath.Join(clusterDir, fmt.Sprintf("%s.yaml", sessionID))
+}
 
-	_, backupStatErr := os.Stat(backupPath)
-
-	if backupStatErr == nil {
-		if err := os.Rename(backupPath, kubeconfigPath); err != nil {
-			return fmt.Errorf("failed to restore kubeconfig by renaming backup %s: %w", backupPath, err)
-		}
-		logging.Debugf("Successfully restored kubeconfig from backup %s", backupPath)
-	} else {
-		if os.IsNotExist(backupStatErr) {
-			if removeErr := os.Remove(kubeconfigPath); removeErr != nil && !os.IsNotExist(removeErr) {
-				return fmt.Errorf("backup %s missing and failed to remove temporary kubeconfig %s: %w", backupPath, kubeconfigPath, removeErr)
-			}
-		} else {
-			return fmt.Errorf("failed to check backup kubeconfig file %s: %w", backupPath, backupStatErr)
-		}
-	}
-	return nil
+func KubeconfigPathForRun(clusterName string) string {
+	clusterDir := filepath.Join(KubeconfigBasePath(), clusterName)
+	return filepath.Join(clusterDir, "run-temp.yaml")
 }
 
 func WriteKubeconfig(path string, content string) error {
 	logging.Debugf("Writing kubeconfig to %s", path)
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0750); err != nil {
+		return fmt.Errorf("failed to create kubeconfig directory %s: %w", dir, err)
+	}
 	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
 		return fmt.Errorf("failed to write kubeconfig: %w", err)
 	}

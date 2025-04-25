@@ -6,9 +6,16 @@ EKSSM is a robust CLI tool that allows you to run Kubernetes CLI commands (like 
 
 - Securely connect to EKS clusters via SSM
 - **Two Modes:**
-  - **Run Mode:** Execute single commands via a temporary proxy session.
-  - **Session Mode:** Manage a persistent background proxy session for multiple commands.
-- Kubeconfig management (backup, temporary generation, restore) with automatic cleanup
+  - **Run Mode:** Execute single commands via a temporary proxy session and dedicated kubeconfig.
+  - **Session Mode:** Manage multiple, persistent background proxy sessions, each with its own dedicated kubeconfig.
+- **Multi-Session Support:** Run and manage concurrent sessions to the same or different clusters.
+- **Dedicated Kubeconfig Files:** Each session (and `run` command) uses a separate kubeconfig file stored in `$HOME/.ekssm/kubeconfigs/`, leaving your default `~/.kube/config` untouched.
+- **Dynamic Port Allocation:** `session start` automatically finds an available local port, preventing conflicts (can be overridden with `--local-port`).
+- **Session Management Commands:**
+  - `session start`: Begin a new background session.
+  - `session stop`: Stop a specific session by ID or all sessions.
+  - `session list`: View details of all active sessions.
+  - `session switch`: Get the command to point `KUBECONFIG` to a specific session's file.
 - Support for all standard Kubernetes CLI commands (kubectl, helm, etc.)
 - Proper signal handling and cleanup
 - Detailed logging with `--debug` option
@@ -41,7 +48,7 @@ mv ekssm /usr/local/bin/
 
 ### Run Command (Temporary Session)
 
-The `run` command starts a temporary SSM proxy, executes your command, and then stops the proxy and restores your original kubeconfig. Ideal for single commands or scripts.
+The `run` command starts a temporary SSM proxy, executes your command using a temporary kubeconfig, and then stops the proxy and cleans up the temporary file. Ideal for single commands or scripts without interfering with active sessions.
 
 ```bash
 # Basic kubectl usage:
@@ -50,48 +57,76 @@ ekssm run --instance-id <INSTANCE_ID> --cluster-name <CLUSTER_NAME> -- kubectl g
 # With Helm:
 ekssm run --instance-id <INSTANCE_ID> --cluster-name <CLUSTER_NAME> -- helm list
 
-# With custom local port:
+# With custom local port (rarely needed):
 ekssm run --instance-id <INSTANCE_ID> --cluster-name <CLUSTER_NAME> --local-port 8443 -- kubectl get nodes
 
 # Enable debug logging:
 ekssm run --instance-id <INSTANCE_ID> --cluster-name <CLUSTER_NAME> --debug -- kubectl get pods -A
 ```
 
-**Important:** The command and its arguments *must* follow the double dash (`--`).
+**Important:** The command and its arguments *must* follow the double dash (`--`). The `run` command sets the `KUBECONFIG` environment variable internally only for the child process running the command.
 
-### Session Commands (Persistent Session)
+### Session Commands (Persistent Sessions)
 
-The `session` commands manage a persistent background SSM proxy session. This is useful when you need to run multiple commands against the cluster without the overhead of starting/stopping the proxy each time.
+The `session` commands manage persistent background SSM proxy sessions, each with its own dedicated kubeconfig. This is useful when you need to run multiple commands against one or more clusters.
 
 **Starting a Session:**
 
 ```bash
-ekssm session start --instance-id <INSTANCE_ID> --cluster-name <CLUSTER_NAME> [--local-port <PORT>]
+# Start a session with dynamic port allocation
+ekssm session start --instance-id <INSTANCE_ID> --cluster-name <CLUSTER_NAME>
+
+# Start a session specifying a local port (if needed)
+ekssm session start --instance-id <INSTANCE_ID> --cluster-name <CLUSTER_NAME> --local-port <PORT>
 ```
 
 This command:
-- Starts the SSM port forwarding in the background.
-- Backs up your current default kubeconfig (e.g., `~/.kube/config`) to `~/.kube/config.ekssm-bak`.
-- Writes a new default kubeconfig pointing to the local proxy (`localhost:<PORT>`).
-- Saves session details (PID, etc.) to `~/.ekssm/session.json`.
+- Starts the SSM port forwarding in the background using a dynamically allocated (or specified) local port.
+- Generates a unique Session ID.
+- Creates a dedicated kubeconfig file at `$HOME/.ekssm/kubeconfigs/<cluster-name>/<session-id>.yaml`.
+- Saves session details (PID, Port, Kubeconfig Path, etc.) to `$HOME/.ekssm/session.json`.
+- Prints the `export KUBECONFIG=...` command needed to use the session.
 
-After starting a session, you can use `kubectl`, `helm`, etc. directly, and they will automatically use the proxied connection.
-
-**Stopping a Session:**
+**Listing Active Sessions:**
 
 ```bash
+ekssm session list
+```
+Displays a table of all active sessions, including their IDs, cluster names, PIDs, ports, and kubeconfig paths.
+
+**Switching KUBECONFIG for a Session:**
+
+```bash
+# Get the export command for a specific session
+ekssm session switch <SESSION_ID>
+
+# Example: Use the output in your shell
+export KUBECONFIG=$(ekssm session switch <SESSION_ID>)
+# or copy-paste the output: export KUBECONFIG='/path/to/session.yaml'
+```
+This command prints the `export KUBECONFIG=...` command pointing to the specified session's kubeconfig file. **It does not execute the command itself.**
+
+**Stopping Sessions:**
+
+```bash
+# Stop a specific session by ID
+ekssm session stop --session-id <SESSION_ID>
+
+# Stop ALL active sessions
 ekssm session stop
 ```
 
 This command:
-- Stops the background SSM proxy process.
-- Restores your original kubeconfig from the backup.
-- Deletes the session state file (`~/.ekssm/session.json`).
+- Stops the specified background SSM proxy process(es).
+- Removes the dedicated kubeconfig file(s).
+- Removes the session entry(ies) from the state file (`$HOME/.ekssm/session.json`).
 
-**Flags:**
+### Flags
+
 - `--instance-id` (Required for `run`, `session start`): EC2 instance ID with SSM agent.
 - `--cluster-name` (Required for `run`, `session start`): EKS cluster name.
-- `--local-port` (Optional, default: `9443` for `run`, `session start`): Local port for the proxy.
+- `--local-port` (Optional for `run`, `session start`): Specific local port for the proxy. If omitted or "0", a dynamic port is allocated.
+- `--session-id` (Optional for `session stop`): Specific session ID to stop. If omitted, all sessions are stopped.
 - `--debug` (Optional, Global): Enable verbose debug logging.
 
 ## Requirements
@@ -134,25 +169,29 @@ If you encounter an "Invalid Operation" error when starting the SSM session, che
 EKSSM leverages AWS Systems Manager Session Manager's port forwarding capability.
 
 **Run Mode:**
-1.  Fetches EKS cluster info to get the API server endpoint.
-2.  Starts an SSM port forwarding session (`AWS-StartPortForwardingSessionToRemoteHost`) from `localhost:<local-port>` to `<eks-endpoint>:443` via the specified EC2 instance.
-3.  Waits for the local port to be available.
-4.  Backs up the current kubeconfig (`~/.kube/config` or `$KUBECONFIG`) to `.ekssm-run-bak`.
-5.  Writes a temporary kubeconfig pointing to `localhost:<local-port>`.
-6.  Executes the user-provided command (e.g., `kubectl get pods`).
-7.  Restores the original kubeconfig from the backup.
-8.  Terminates the SSM session and stops the `session-manager-plugin` process.
+1. Fetches EKS cluster info to get the API server endpoint.
+2. Starts an SSM port forwarding session (`AWS-StartPortForwardingSessionToRemoteHost`) from `localhost:<local-port>` to `<eks-endpoint>:443` via the specified EC2 instance.
+3. Waits for the local port to be available.
+4. Generates a temporary kubeconfig file at `$HOME/.ekssm/kubeconfigs/<cluster-name>/run-temp.yaml` pointing to `localhost:<local-port>`.
+5. Executes the user-provided command (e.g., `kubectl get pods`) with the `KUBECONFIG` environment variable set to the temporary file's path.
+6. Terminates the SSM session and stops the `session-manager-plugin` process.
+7. Removes the temporary kubeconfig file.
 
 **Session Mode:**
-1.  **`start`**: Performs steps 1-3 similar to `run` mode.
-2.  Backs up the current kubeconfig to `.ekssm-bak`.
-3.  Writes a new kubeconfig pointing to `localhost:<local-port>`.
-4.  Writes the process ID and session details to `~/.ekssm/session.json`.
-5.  The SSM proxy continues running in the background.
-6.  **`stop`**: Reads PID from `~/.ekssm/session.json`.
-7.  Terminates the SSM session and process.
-8.  Restores the original kubeconfig from `.ekssm-bak`.
-9.  Deletes the state file.
+1. **`start`**:
+   - Fetches EKS cluster info.
+   - Determines the local port (dynamic or user-specified).
+   - Starts the SSM port forwarding session in the background.
+   - Generates a unique Session ID.
+   - Writes a dedicated kubeconfig file to `$HOME/.ekssm/kubeconfigs/<cluster-name>/<session-id>.yaml` pointing to `localhost:<local-port>`.
+   - Writes the process ID and session details (including Kubeconfig path) to `$HOME/.ekssm/session.json`.
+2. **`list`**: Reads `$HOME/.ekssm/session.json` and displays active sessions.
+3. **`switch <id>`**: Reads `$HOME/.ekssm/session.json`, finds the session by ID, and prints the `export KUBECONFIG=...` command using the stored path.
+4. **`stop [--session-id <id>]`**:
+   - Reads session(s) from `$HOME/.ekssm/session.json`.
+   - Terminates the SSM session process(es) by PID.
+   - Removes the dedicated kubeconfig file(s).
+   - Removes the session entry(ies) from the state file.
 
 The tool uses AWS Systems Manager's remote host port forwarding feature to securely connect to the EKS cluster's API server through an SSM-enabled instance, without requiring the instance to have direct network access to the cluster.
 

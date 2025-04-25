@@ -2,104 +2,144 @@ package state
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/cloudopsy/ekssm/internal/logging"
 )
 
+// SessionState holds the details of a running ekssm session.
 type SessionState struct {
-	PID         int    `json:"pid"`
-	SessionID   string `json:"session_id"`
-	ClusterName string `json:"cluster_name"`
-	InstanceID  string `json:"instance_id"`
-	LocalPort   string `json:"local_port"`
+	PID            int    `json:"pid"`
+	SessionID      string `json:"session_id"`
+	ClusterName    string `json:"cluster_name"`
+	InstanceID     string `json:"instance_id"`
+	LocalPort      string `json:"local_port"`
+	KubeconfigPath string `json:"kubeconfig_path"`
 }
 
-func stateFilePath() (string, error) {
+// Manager handles loading and saving the session state.
+type Manager struct {
+	stateFilePath string
+	mu            sync.Mutex // Protects access to the state file
+}
+
+// SessionMap defines the structure stored in the JSON file (map of SessionID to SessionState).
+type SessionMap map[string]SessionState
+
+// NewManager creates a new state manager.
+func NewManager() (*Manager, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return "", fmt.Errorf("failed to get user home directory: %w", err)
+		return nil, fmt.Errorf("failed to get user home directory: %w", err)
 	}
-	return filepath.Join(homeDir, ".ekssm", "session.json"), nil
+	stateDir := filepath.Join(homeDir, ".ekssm")
+	if err := os.MkdirAll(stateDir, 0750); err != nil {
+		return nil, fmt.Errorf("failed to create state directory %s: %w", stateDir, err)
+	}
+	stateFilePath := filepath.Join(stateDir, "session.json")
+	return &Manager{stateFilePath: stateFilePath}, nil
 }
 
-func ReadState() (*SessionState, error) {
-	path, err := stateFilePath()
-	if err != nil {
-		return nil, err
-	}
+// loadState reads the session state map from the file.
+// It acquires the lock.
+func (m *Manager) loadState() (SessionMap, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(m.stateFilePath)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			logging.Debug("State file does not exist, assuming no active session.")
-			return nil, nil
+		if os.IsNotExist(err) {
+			// If the file doesn't exist, return an empty map
+			return make(SessionMap), nil
 		}
-		return nil, fmt.Errorf("failed to read state file %s: %w", path, err)
+		return nil, fmt.Errorf("failed to read state file %s: %w", m.stateFilePath, err)
 	}
 
 	if len(data) == 0 {
-		logging.Debug("State file is empty, assuming no active session.")
-		return nil, nil
+		// If the file is empty, return an empty map
+		return make(SessionMap), nil
 	}
 
-	var state SessionState
-	if err := json.Unmarshal(data, &state); err != nil {
-		logging.Errorf("State file %s contains invalid JSON: %v", path, err)
-		return nil, fmt.Errorf("failed to parse state file %s (corrupted?): %w", path, err)
+	var sessions SessionMap
+	if err := json.Unmarshal(data, &sessions); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal state file %s: %w", m.stateFilePath, err)
 	}
-
-	if state.PID <= 0 {
-		logging.Warnf("State file contains invalid PID (%d). Clearing state.", state.PID)
-		_ = ClearState()
-		return nil, nil
-	}
-
-	logging.Debugf("Read active session state: PID=%d, SessionID=%s", state.PID, state.SessionID)
-	return &state, nil
+	return sessions, nil
 }
 
-func WriteState(state *SessionState) error {
-	path, err := stateFilePath()
+// saveState writes the session state map to the file.
+// It acquires the lock.
+func (m *Manager) saveState(sessions SessionMap) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	data, err := json.MarshalIndent(sessions, "", "  ")
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to marshal session state: %w", err)
 	}
 
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0750); err != nil {
-		return fmt.Errorf("failed to create state directory %s: %w", dir, err)
+	if err := os.WriteFile(m.stateFilePath, data, 0600); err != nil {
+		return fmt.Errorf("failed to write state file %s: %w", m.stateFilePath, err)
 	}
-
-	data, err := json.MarshalIndent(state, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal state to JSON: %w", err)
-	}
-
-	if err := os.WriteFile(path, data, 0640); err != nil {
-		return fmt.Errorf("failed to write state file %s: %w", path, err)
-	}
-
-	logging.Debugf("Session state written to %s", path)
+	logging.Debugf("Session state saved to %s", m.stateFilePath)
 	return nil
 }
 
-func ClearState() error {
-	path, err := stateFilePath()
+// AddSession adds or updates a session in the state file.
+func (m *Manager) AddSession(session SessionState) error {
+	if session.SessionID == "" {
+		return fmt.Errorf("cannot add session with empty SessionID")
+	}
+	sessions, err := m.loadState()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to load state before adding session: %w", err)
 	}
+	sessions[session.SessionID] = session
+	return m.saveState(sessions)
+}
 
-	if err := os.Remove(path); err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			logging.Debug("State file already removed.")
-			return nil
-		}
-		return fmt.Errorf("failed to remove state file %s: %w", path, err)
+// RemoveSession removes a session from the state file by its ID.
+func (m *Manager) RemoveSession(sessionID string) error {
+	if sessionID == "" {
+		return fmt.Errorf("cannot remove session with empty SessionID")
 	}
+	sessions, err := m.loadState()
+	if err != nil {
+		return fmt.Errorf("failed to load state before removing session: %w", err)
+	}
+	if _, exists := sessions[sessionID]; !exists {
+		logging.Warnf("Attempted to remove non-existent session ID: %s", sessionID)
+		return nil // Or return an error if preferred
+	}
+	delete(sessions, sessionID)
+	return m.saveState(sessions)
+}
 
-	logging.Debugf("Session state file %s removed.", path)
-	return nil
+// GetSession retrieves a specific session by its ID.
+func (m *Manager) GetSession(sessionID string) (*SessionState, error) {
+	if sessionID == "" {
+		return nil, fmt.Errorf("cannot get session with empty SessionID")
+	}
+	sessions, err := m.loadState()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load state before getting session: %w", err)
+	}
+	if session, exists := sessions[sessionID]; exists {
+		return &session, nil
+	}
+	return nil, fmt.Errorf("session with ID '%s' not found", sessionID) // Return specific error when not found
+}
+
+// GetAllSessions retrieves all active sessions.
+func (m *Manager) GetAllSessions() (SessionMap, error) {
+	return m.loadState()
+}
+
+// ClearAllSessions removes all sessions from the state file.
+func (m *Manager) ClearAllSessions() error {
+	// Save an empty map to clear the file
+	return m.saveState(make(SessionMap))
 }
