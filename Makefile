@@ -74,8 +74,3 @@ release:
 	@echo "Tagging release $(VERSION)..."
 	@git tag v$(VERSION)
 	@git push origin v$(VERSION)
-
-# Run the application locally
-run: build
-	@echo "Running $(BINARY_NAME) $(ARGS)..."
-	@./$(BUILD_DIR)/$(BINARY_NAME) $(ARGS)
