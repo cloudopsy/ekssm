@@ -63,7 +63,8 @@ func Fatalf(template string, args ...interface{}) {
 }
 
 func Sync() {
-	log.Sync()
+	// Attempt to sync the logger, ignoring the error as there's little we can do on failure anyway.
+	_ = log.Sync()
 }
 
 func SetDebug(debug bool) {

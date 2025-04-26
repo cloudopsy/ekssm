@@ -106,7 +106,9 @@ func stopAndCleanupSession(manager *state.Manager, session state.SessionState, r
 			time.Sleep(500 * time.Millisecond)
 			if killErr := process.Signal(syscall.SIGKILL); killErr != nil {
 				logging.Errorf("Failed to send SIGKILL to PID %d: %v", session.PID, killErr)
-				if combinedErr == nil {
+				// Although lint flags this, we only want to store the first error encountered
+				// during the stop attempt for this specific session.
+				if combinedErr == nil { //nolint:nilness
 					combinedErr = fmt.Errorf("failed to kill process %d: %w", session.PID, killErr)
 				}
 			} else {

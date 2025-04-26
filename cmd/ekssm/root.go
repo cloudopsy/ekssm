@@ -7,6 +7,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// Variables set during build
+var version = "dev" // Default value
+
 var (
 	rootCmd = &cobra.Command{
 		Use:   "ekssm",
@@ -15,6 +18,11 @@ var (
 Primarily used for kubectl, but can support any command that can use the KUBECONFIG environment.
 
 Use 'ekssm run --help' or 'ekssm session --help' for more details on subcommands.`,
+		CompletionOptions: cobra.CompletionOptions{
+			DisableDefaultCmd: true,
+		},
+		SilenceUsage:  true,
+		SilenceErrors: true,
 	}
 
 	debug bool
@@ -28,5 +36,8 @@ func Execute() {
 }
 
 func init() {
+	// Set the version for the --version flag
+	rootCmd.Version = version
+
 	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "Enable debug logging")
 }

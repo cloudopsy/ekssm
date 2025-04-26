@@ -9,17 +9,14 @@ import (
 var shellCmd = &cobra.Command{
 	Use:   "shell [shell]",
 	Short: "Generate shell integration code",
-	Long: `Generates shell integration code that allows ekssm to modify environment variables
-in the parent shell.
+	Long: `Generate shell integration script for bash or zsh.
 
-Supported shells: bash, zsh
+Add the following to your shell profile (e.g., ~/.bashrc or ~/.zshrc):
 
-Usage:
-  # For bash/zsh (add to ~/.bashrc or ~/.zshrc):
   eval "$(ekssm shell bash)"
 
 This enables automatic setting of KUBECONFIG when using 'ekssm session switch'.`,
-	Args: cobra.ExactValidArgs(1),
+	Args: cobra.MatchAll(cobra.ExactArgs(1), cobra.OnlyValidArgs),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		shellType := args[0]
 
