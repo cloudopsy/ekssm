@@ -1,0 +1,111 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (without v prefix, e.g. 1.0.0)'
+        required: true
+  push:
+    tags: [ 'v*' ]
+
+jobs:
+  create-tag:
+    name: Create Tag
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
+      - name: Create Release Tag
+        run: make release VERSION=${{ github.event.inputs.version }}
+
+  build-release:
+    name: Build and Release
+    runs-on: ubuntu-latest
+    needs: [create-tag]
+    if: github.event_name == 'workflow_dispatch'
+    # This job will run immediately after the tag is created in the create-tag job
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          ref: v${{ github.event.inputs.version }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+
+      - name: Build binaries
+        run: |
+          GOOS=linux GOARCH=amd64 make build
+          mv bin/ekssm bin/ekssm-linux-amd64
+          GOOS=darwin GOARCH=amd64 make build
+          mv bin/ekssm bin/ekssm-darwin-amd64
+          GOOS=darwin GOARCH=arm64 make build
+          mv bin/ekssm bin/ekssm-darwin-arm64
+
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ github.event.inputs.version }}
+          name: Release v${{ github.event.inputs.version }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            bin/ekssm-linux-amd64
+            bin/ekssm-darwin-amd64
+            bin/ekssm-darwin-arm64
+
+  handle-tag-push:
+    name: Handle Tag Push
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+
+      - name: Build binaries
+        run: |
+          GOOS=linux GOARCH=amd64 make build
+          mv bin/ekssm bin/ekssm-linux-amd64
+          GOOS=darwin GOARCH=amd64 make build
+          mv bin/ekssm bin/ekssm-darwin-amd64
+          GOOS=darwin GOARCH=arm64 make build
+          mv bin/ekssm bin/ekssm-darwin-arm64
+
+      - name: Get version
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Release ${{ steps.get_version.outputs.VERSION }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            bin/ekssm-linux-amd64
+            bin/ekssm-darwin-amd64
+            bin/ekssm-darwin-arm64
