@@ -1,5 +1,3 @@
-// Package state provides functionality for managing and persisting session state
-// in the ekssm application.
 package state
 
 import (
@@ -12,7 +10,6 @@ import (
 	"github.com/cloudopsy/ekssm/internal/logging"
 )
 
-// SessionState holds the details of a running ekssm session.
 type SessionState struct {
 	PID            int    `json:"pid"`
 	SessionID      string `json:"session_id"`
@@ -22,16 +19,13 @@ type SessionState struct {
 	KubeconfigPath string `json:"kubeconfig_path"`
 }
 
-// SessionMap defines the structure stored in the JSON file (map of SessionID to SessionState).
 type SessionMap map[string]SessionState
 
-// Manager handles loading and saving the session state.
 type Manager struct {
 	stateFilePath string
 	mu            sync.Mutex // Protects access to the state file
 }
 
-// NewManager creates a new state manager.
 func NewManager() (*Manager, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -45,7 +39,6 @@ func NewManager() (*Manager, error) {
 	return &Manager{stateFilePath: stateFilePath}, nil
 }
 
-// loadState reads the session state map from the file.
 func (m *Manager) loadState() (SessionMap, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -69,7 +62,6 @@ func (m *Manager) loadState() (SessionMap, error) {
 	return sessions, nil
 }
 
-// saveState writes the session state map to the file.
 func (m *Manager) saveState(sessions SessionMap) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -86,7 +78,6 @@ func (m *Manager) saveState(sessions SessionMap) error {
 	return nil
 }
 
-// AddSession adds or updates a session in the state file.
 func (m *Manager) AddSession(session SessionState) error {
 	if session.SessionID == "" {
 		return fmt.Errorf("cannot add session with empty SessionID")
@@ -99,7 +90,6 @@ func (m *Manager) AddSession(session SessionState) error {
 	return m.saveState(sessions)
 }
 
-// RemoveSession removes a session from the state file by its ID.
 func (m *Manager) RemoveSession(sessionID string) error {
 	if sessionID == "" {
 		return fmt.Errorf("cannot remove session with empty SessionID")
@@ -116,7 +106,6 @@ func (m *Manager) RemoveSession(sessionID string) error {
 	return m.saveState(sessions)
 }
 
-// GetSession retrieves a specific session by its ID.
 func (m *Manager) GetSession(sessionID string) (*SessionState, error) {
 	if sessionID == "" {
 		return nil, fmt.Errorf("cannot get session with empty SessionID")
@@ -131,12 +120,10 @@ func (m *Manager) GetSession(sessionID string) (*SessionState, error) {
 	return nil, fmt.Errorf("session with ID '%s' not found", sessionID)
 }
 
-// GetAllSessions retrieves all active sessions.
 func (m *Manager) GetAllSessions() (SessionMap, error) {
 	return m.loadState()
 }
 
-// ClearAllSessions removes all sessions from the state file.
 func (m *Manager) ClearAllSessions() error {
 	return m.saveState(make(SessionMap))
 }

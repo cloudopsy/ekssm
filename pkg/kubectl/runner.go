@@ -9,7 +9,6 @@ import (
 	"github.com/cloudopsy/ekssm/internal/logging"
 )
 
-// ExecuteCommand runs the specified command with the KUBECONFIG environment variable set.
 func ExecuteCommand(args []string, kubeconfigPath string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("no command arguments provided")

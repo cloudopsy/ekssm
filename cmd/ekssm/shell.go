@@ -1,4 +1,3 @@
-// Package main implements the command-line interface for ekssm.
 package main
 
 import (
@@ -7,7 +6,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// shellCmd represents the shell command for shell integration
 var shellCmd = &cobra.Command{
 	Use:   "shell [shell]",
 	Short: "Generate shell integration code",

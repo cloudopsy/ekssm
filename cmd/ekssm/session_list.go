@@ -1,4 +1,3 @@
-// Package main implements the command-line interface for ekssm.
 package main
 
 import (
@@ -13,7 +12,6 @@ import (
 	"github.com/cloudopsy/ekssm/internal/state"
 )
 
-// sessionListCmd represents the session list command
 var sessionListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all active ekssm sessions",
@@ -21,7 +19,6 @@ var sessionListCmd = &cobra.Command{
 	RunE:  listSessions,
 }
 
-// listSessions retrieves and displays all active sessions
 func listSessions(cmd *cobra.Command, args []string) error {
 	debug, _ := cmd.Flags().GetBool("debug")
 	logging.SetDebug(debug)
@@ -50,11 +47,10 @@ func listSessions(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// renderSessionTable formats and displays session data in a table
 func renderSessionTable(sessions state.SessionMap) {
 	// Prepare session data for display
 	data := [][]string{}
-	
+
 	// Sort session IDs for consistent output
 	ids := make([]string, 0, len(sessions))
 	for id := range sessions {
@@ -80,7 +76,7 @@ func renderSessionTable(sessions state.SessionMap) {
 	table.SetBorder(true)
 	table.AppendBulk(data)
 	table.Render()
-	
+
 	// If sessions exist, print the latest one for easy access
 	if len(ids) > 0 {
 		// Get the most recently added session (we'll use the last ID in the sorted list)

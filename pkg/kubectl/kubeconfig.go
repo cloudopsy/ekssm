@@ -1,5 +1,3 @@
-// Package kubectl provides functionality for working with Kubernetes configuration
-// and executing kubectl commands.
 package kubectl
 
 import (
@@ -8,8 +6,6 @@ import (
 	"github.com/cloudopsy/ekssm/internal/logging"
 )
 
-// GenerateKubeconfig creates a kubeconfig string for accessing an EKS cluster.
-// It configures aws-cli for authentication via the exec plugin.
 func GenerateKubeconfig(clusterName, endpoint string) string {
 	logging.Debugf("Generating kubeconfig for cluster %s with endpoint %s", clusterName, endpoint)
 

@@ -1,5 +1,3 @@
-// Package util provides internal utility functions for file operations, networking,
-// and kubeconfig management specific to ekssm.
 package util
 
 import (
@@ -11,8 +9,6 @@ import (
 	"github.com/cloudopsy/ekssm/internal/logging"
 )
 
-// WaitForPort waits for a TCP port to be available (connectable) within the given timeout.
-// Returns an error if the port doesn't become available within the timeout.
 func WaitForPort(port string, timeout time.Duration) error {
 	address := fmt.Sprintf("localhost:%s", port)
 	deadline := time.Now().Add(timeout)
@@ -37,8 +33,6 @@ func WaitForPort(port string, timeout time.Duration) error {
 	return fmt.Errorf("timed out waiting for local port %s to be ready", port)
 }
 
-// FindAvailablePort finds an available local TCP port by listening on port 0.
-// It returns the port number as a string.
 func FindAvailablePort() (string, error) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

@@ -1,11 +1,9 @@
-// Package main implements the command-line interface for ekssm.
 package main
 
 import (
 	"github.com/spf13/cobra"
 )
 
-// sessionCmd represents the base command for session management
 var sessionCmd = &cobra.Command{
 	Use:   "session",
 	Short: "Manage background SSM proxy sessions for EKS access",
@@ -24,9 +22,6 @@ TIP: For automatic KUBECONFIG setting without manual export, use shell integrati
 
 func init() {
 	rootCmd.AddCommand(sessionCmd)
-
-	// Add list and switch commands here
-	// sessionStartCmd and sessionStopCmd add themselves via their own init() functions
 	sessionCmd.AddCommand(sessionListCmd)
 	sessionCmd.AddCommand(sessionSwitchCmd)
 }
