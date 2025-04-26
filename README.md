@@ -227,18 +227,6 @@ EKSSM leverages AWS Systems Manager Session Manager's port forwarding capability
 
 The tool uses AWS Systems Manager's remote host port forwarding feature to securely connect to the EKS cluster's API server through an SSM-enabled instance, without requiring the instance to have direct network access to the cluster.
 
-## Makefile Targets
-
-Useful commands available via the Makefile:
-
-- `make build`: Compile the `ekssm` binary into the `bin/` directory.
-- `make install`: Build and copy the binary to `$GOPATH/bin`.
-- `make test`: Run unit tests.
-- `make lint`: Run the Go linter (`golangci-lint`). Requires linter to be installed.
-- `make fmt`: Format Go code using `go fmt`.
-- `make clean`: Remove the `bin/` directory.
-- `make run ARGS="..."`: Build and run the tool locally, passing arguments via `ARGS` (e.g., `make run ARGS="session start --cluster-name test --instance-id i-123"`).
-
 ## License
 
 MIT
