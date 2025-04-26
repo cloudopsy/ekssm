@@ -26,7 +26,7 @@ Use 'ekssm run --help' or 'ekssm session --help' for more details on subcommands
 // Execute runs the root command and handles any errors
 func Execute() {
 	// Cobra already handles signals internally, so we don't need custom signal handling at the root level
-	
+
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -34,9 +34,6 @@ func Execute() {
 }
 
 func init() {
-	// Register all commands
-	rootCmd.AddCommand(shellCmd)
-	
 	// Add the debug flag to all commands
 	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "Enable debug logging")
 }

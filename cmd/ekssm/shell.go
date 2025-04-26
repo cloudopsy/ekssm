@@ -108,5 +108,5 @@ ekssm() {
 }
 
 func init() {
-	// Shell command is registered in root.go
+	rootCmd.AddCommand(shellCmd)
 }
